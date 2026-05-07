@@ -1,3 +1,11 @@
+# Vercel needs this "handler" function to know what to do when the URL is visited
+def handler(request):
+    return {
+        'statusCode': 200,
+        'body': 'Agentic OCR Engine is officially LIVE!',
+        'headers': {'Content-Type': 'text/plain'}
+    }
+
 
 import os
 import json
