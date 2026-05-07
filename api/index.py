@@ -1,18 +1,20 @@
 from flask import Flask
 import os
+import sys
+
+# This allows api/index.py to see your files in the folder above it
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# --- IMPORT YOUR REAL CODE HERE ---
+# import extractor 
+# ----------------------------------
 
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return """
-    <div style="font-family:sans-serif; text-align:center; margin-top:100px;">
-        <h1 style="color:#0070f3;">?? AGENTIC OCR IS LIVE</h1>
-        <p>If you see this, the deployment is 100% working.</p>
-        <hr style="width:200px">
-        <p>Current Directory: {}</p>
-    </div>
-    """.format(os.getcwd())
+    # Example: call a function from your real code
+    # result = extractor.run_analysis()
+    return "<h1>Your Agentic OCR is ready to work!</h1>"
 
 handler = app
-
