@@ -6,6 +6,8 @@ Agentic-OCR is an advanced automated document processing platform that transform
 
 The platform is designed for businesses, accountants, financial analysts, and organizations that need to process large volumes of receipts and invoices with minimal manual intervention. It automatically validates, organizes, and catalogues financial documents with human-like intelligence backed by cutting-edge AI.
 
+https://agentic-ocr-mvism5vhth5vtmubtgoj7x.streamlit.app/     you can use this link to view it!
+
 ## Core Features
 
 ### 1. Intelligent OCR Engine
