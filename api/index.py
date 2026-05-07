@@ -1,16 +1,24 @@
-from flask import Flask
+from flask import Flask, jsonify
 import sys
 import os
 
-# Import your actual logic
-# Example: from agent_engine import some_function
+# This tells Python to look in the parent folder for your scripts
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# --- IMPORT YOUR LOGIC HERE ---
+# Example: import extractor
+# ------------------------------
 
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    # Call your real function here
-    return "This is where your OCR results will appear!"
+    try:
+        # Replace this with a call to your real logic
+        # Example: result = extractor.run_ocr()
+        return "Agentic OCR System: Ready for processing."
+    except Exception as e:
+        return str(e), 500
 
 handler = app
 
