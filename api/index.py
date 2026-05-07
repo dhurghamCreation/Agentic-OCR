@@ -1,20 +1,32 @@
-from flask import Flask
+from flask import Flask, request, jsonify
 import os
 import sys
 
-# This allows api/index.py to see your files in the folder above it
+# This tells the API where your other files are
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-# --- IMPORT YOUR REAL CODE HERE ---
-# import extractor 
-# ----------------------------------
 
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    # Example: call a function from your real code
-    # result = extractor.run_analysis()
-    return "<h1>Your Agentic OCR is ready to work!</h1>"
+    return """
+    <html>
+        <body style="font-family:sans-serif; text-align:center; padding:50px;">
+            <h1>?? Agentic OCR Workspace</h1>
+            <p>Upload an image to let the AI Agent extract data.</p>
+            <form action="/upload" method="post" enctype="multipart/form-data">
+                <input type="file" name="file">
+                <input type="submit" value="Analyze Image">
+            </form>
+        </body>
+    </html>
+    """
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    # This is where you call your REAL extractor code
+    # Example: import extractor; return extractor.process(request.files["file"])
+    return "Image received! (Logic connection in progress...)"
 
 handler = app
+
