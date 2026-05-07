@@ -2,4 +2,3 @@ flask
 openai
 pandas
 requests
-python-dotenv
