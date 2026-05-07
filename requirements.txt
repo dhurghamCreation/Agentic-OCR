@@ -1,0 +1,9 @@
+streamlit>=1.0
+streamlit-lottie
+streamlit-extras
+pandas
+requests
+Pillow
+pytesseract
+opencv-python
+python-dotenv

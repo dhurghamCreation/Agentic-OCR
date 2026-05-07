@@ -1,0 +1,485 @@
+import os
+import time
+from datetime import datetime
+
+import pandas as pd
+import requests
+import streamlit as st
+from streamlit_lottie import st_lottie
+from streamlit_extras.metric_cards import style_metric_cards
+
+from agent_engine import ReceiptAgent
+
+APP_VERSION = "2.1.0"
+DEFAULT_DATA_PATH = "D:/Agentic_OCR/data/sroie"
+DEFAULT_REPORT_PATH = "D:/Agentic_OCR/master_report.csv"
+DEFAULT_LOG_PATH = "D:/Agentic_OCR/agent_trace.log"
+DEFAULT_ORGANIZED_PATH = "D:/Agentic_OCR/organized_receipts"
+
+st.set_page_config(
+    page_title="Neural OCR | Command Platform",
+    page_icon="NN",
+    layout="wide",
+)
+
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;600;700&display=swap');
+
+    :root {
+        --ink: #0f172a;
+        --mist: #e2e8f0;
+        --signal: #00a3b8;
+        --signal-soft: #6dd3dd;
+        --accent: #ff8a00;
+        --panel: rgba(6, 18, 36, 0.74);
+        --line: rgba(255, 255, 255, 0.16);
+    }
+
+    .stApp {
+        background:
+            radial-gradient(circle at 88% 8%, rgba(255,138,0,0.2), rgba(255,138,0,0.0) 42%),
+            radial-gradient(circle at 8% 85%, rgba(0,163,184,0.2), rgba(0,163,184,0.0) 45%),
+            linear-gradient(130deg, #020817 5%, #10213a 50%, #0a1b2d 100%);
+    }
+
+    html, body, [class*="css"], .stMarkdown, .stText, .stMetric {
+        font-family: 'Manrope', sans-serif;
+        color: var(--mist);
+    }
+
+    h1, h2, h3 {
+        font-family: 'Space Grotesk', sans-serif;
+        letter-spacing: 0.02em;
+    }
+
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, rgba(2, 8, 23, 0.92), rgba(15, 23, 42, 0.8));
+        border-right: 1px solid var(--line);
+    }
+
+    .hero {
+        padding: 1.1rem 1.2rem;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: linear-gradient(110deg, rgba(0,163,184,0.2), rgba(255,138,0,0.14));
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+        margin-bottom: 1.1rem;
+    }
+
+    .glass {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 0.9rem 1rem;
+    }
+
+    .stButton > button {
+        border-radius: 12px;
+        border: 1px solid rgba(0, 163, 184, 0.5);
+        background: linear-gradient(90deg, #008ea0, #00b6cc);
+        color: #ffffff;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        transition: all 0.2s ease;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 22px rgba(0, 163, 184, 0.35);
+    }
+
+    .status-pill {
+        display: inline-block;
+        font-size: 0.8rem;
+        border-radius: 999px;
+        padding: 0.25rem 0.65rem;
+        border: 1px solid var(--line);
+        margin-top: 0.4rem;
+        color: var(--mist);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+@st.cache_data(show_spinner=False)
+def load_lottie_url(url: str):
+    try:
+        response = requests.get(url, timeout=6)
+        if response.status_code == 200:
+            return response.json()
+    except Exception:
+        return None
+    return None
+
+
+@st.cache_data(show_spinner=False)
+def load_report(path: str) -> pd.DataFrame:
+    if not os.path.exists(path):
+        return pd.DataFrame()
+
+    df = pd.read_csv(path)
+    for col in ["subtotal", "tax", "total"]:
+        if col not in df.columns:
+            df[col] = 0.0
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+    for col in ["vendor", "date", "status", "filename", "new_name"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df
+
+
+def compute_health_signal(df: pd.DataFrame) -> float:
+    if df.empty:
+        return 0.0
+    verified = df["status"].astype(str).str.contains("VERIFIED", case=False, na=False).mean() * 100
+    math_valid = (df["total"] >= df["tax"]).mean() * 100
+    return round((verified * 0.7) + (math_valid * 0.3), 2)
+
+
+def compute_stats(df: pd.DataFrame) -> dict:
+    if df.empty:
+        return {
+            "median": 0.0,
+            "p90": 0.0,
+            "std": 0.0,
+            "cv": 0.0,
+            "tax_ratio": 0.0,
+            "vendor_concentration": 0.0,
+        }
+
+    totals = df["total"].astype(float)
+    median = float(totals.median())
+    p90 = float(totals.quantile(0.9))
+    std = float(totals.std() if len(totals) > 1 else 0.0)
+    mean = float(totals.mean()) if len(totals) else 0.0
+    cv = (std / mean * 100.0) if mean > 0 else 0.0
+
+    total_sum = float(df["total"].sum())
+    tax_sum = float(df["tax"].sum())
+    tax_ratio = (tax_sum / total_sum * 100.0) if total_sum > 0 else 0.0
+
+    vendor_share = (
+        df.groupby("vendor")["total"].sum() / total_sum
+        if total_sum > 0
+        else pd.Series(dtype=float)
+    )
+    # HHI-like concentration score on a 0-100 scale.
+    hhi = float((vendor_share.pow(2).sum() * 100) if not vendor_share.empty else 0.0)
+
+    return {
+        "median": median,
+        "p90": p90,
+        "std": std,
+        "cv": cv,
+        "tax_ratio": tax_ratio,
+        "vendor_concentration": hhi,
+    }
+
+
+def highlight_status(value: str):
+    safe = str(value).upper()
+    if "VERIFIED" in safe:
+        return "background-color: rgba(16, 185, 129, 0.18); color: #d1fae5; font-weight: 700"
+    if "ERROR" in safe:
+        return "background-color: rgba(239, 68, 68, 0.18); color: #fee2e2; font-weight: 700"
+    return "background-color: rgba(245, 158, 11, 0.16); color: #fef3c7; font-weight: 700"
+
+
+lottie_ai = load_lottie_url("https://assets10.lottiefiles.com/packages/lf20_49rdyysj.json")
+
+if "last_run_time" not in st.session_state:
+    st.session_state.last_run_time = "Not run yet"
+
+st.markdown(
+    f"""
+    <div class="hero">
+        <h1>Neural OCR Command Platform</h1>
+        <p>High-velocity extraction, receipt intelligence analytics, and operations controls in one cockpit.</p>
+        <span class="status-pill">Version {APP_VERSION}</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+with st.sidebar:
+    if lottie_ai:
+        st_lottie(lottie_ai, height=125, key="ai_icon")
+
+    st.header("Control Hub")
+    process_limit = st.slider("Batch size", 1, 100, 20)
+    data_path = st.text_input("Dataset path", value=DEFAULT_DATA_PATH)
+    report_path = st.text_input("Report file", value=DEFAULT_REPORT_PATH)
+
+    with st.expander("Performance and Execution", expanded=True):
+        run_mode = st.selectbox("Run mode", ["Turbo", "Balanced", "Precision"], index=1)
+        max_workers = st.slider("Max workers", 1, 16, 6)
+        organize_after_run = st.checkbox("Organize files after run", value=True)
+        fast_ui = st.checkbox("Fast UI mode (skip intro animation)", value=True)
+
+        with st.expander("Advanced execution", expanded=False):
+            auto_refresh_after_run = st.checkbox("Auto-refresh data after run", value=True)
+            write_report_each_run = st.checkbox("Write report file each run", value=True)
+            warm_up_agent = st.checkbox("Warm up OCR agent before run", value=False)
+
+    with st.expander("Analytics controls", expanded=False):
+        top_vendor_limit = st.slider("Top vendors to display", 5, 30, 12)
+        rolling_window = st.slider("Trend smoothing window", 2, 14, 5)
+
+    st.caption("Model: Docling-V2")
+    st.caption("OCR: Rapid-Torch")
+    st.caption("Audit Engine: Heuristic-GST-6")
+    st.caption(f"Last run: {st.session_state.last_run_time}")
+
+tab_overview, tab_explorer, tab_insights, tab_ops = st.tabs(
+    ["Overview", "Report Explorer", "Insights", "Operations"]
+)
+
+df = load_report(report_path)
+stats = compute_stats(df)
+
+mode_defaults = {
+    "Turbo": {"workers": min(16, max_workers + 4), "organize": False},
+    "Balanced": {"workers": max_workers, "organize": organize_after_run},
+    "Precision": {"workers": max(1, max_workers - 2), "organize": organize_after_run},
+}
+effective_workers = mode_defaults[run_mode]["workers"]
+effective_organize = mode_defaults[run_mode]["organize"]
+
+with tab_overview:
+    k1, k2, k3, k4, k5 = st.columns(5)
+    total_docs = int(len(df))
+    verified_docs = int(df["status"].astype(str).str.contains("VERIFIED", case=False, na=False).sum()) if not df.empty else 0
+    verified_pct = (verified_docs / total_docs * 100) if total_docs else 0
+    total_amount = float(df["total"].sum()) if not df.empty else 0.0
+    tax_amount = float(df["tax"].sum()) if not df.empty else 0.0
+    health_score = compute_health_signal(df)
+
+    k1.metric("Processed", f"{total_docs}")
+    k2.metric("Verified", f"{verified_docs}")
+    k3.metric("Verified Rate", f"{verified_pct:.1f}%")
+    k4.metric("Gross Amount", f"RM {total_amount:,.2f}")
+    k5.metric("Health Score", f"{health_score:.1f}")
+    style_metric_cards(background_color="rgba(255,255,255,0.06)", border_left_color="#00b6cc")
+
+    sk1, sk2, sk3, sk4 = st.columns(4)
+    sk1.metric("Median Receipt", f"RM {stats['median']:,.2f}")
+    sk2.metric("P90 Receipt", f"RM {stats['p90']:,.2f}")
+    sk3.metric("Tax Ratio", f"{stats['tax_ratio']:.2f}%")
+    sk4.metric("Spend Volatility", f"{stats['cv']:.2f}%")
+
+    st.markdown("<div class='glass'>", unsafe_allow_html=True)
+    run_col, refresh_col = st.columns([3, 1])
+
+    with run_col:
+        if st.button("Run Batch Processing"):
+            if warm_up_agent:
+                _warm = ReceiptAgent(max_workers=1)
+                del _warm
+
+            agent = ReceiptAgent(max_workers=effective_workers)
+            progress = st.progress(0)
+            status = st.empty()
+
+            if not fast_ui:
+                for i in range(0, 51, 10):
+                    status.info(f"Preparing extraction pipeline {i}%")
+                    progress.progress(i)
+                    time.sleep(0.02)
+
+            with st.spinner("Running OCR and audit..."):
+                results = agent.bulk_process(
+                    data_path,
+                    limit=process_limit,
+                    report_path=report_path,
+                    write_report=write_report_each_run,
+                )
+                progress.progress(90)
+                if effective_organize:
+                    agent.organize_files(results)
+                progress.progress(100)
+
+            st.session_state.last_run_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.success(
+                f"Completed {len(results)} documents in {run_mode} mode with {effective_workers} workers. "
+                f"Organize={'ON' if effective_organize else 'OFF'}."
+            )
+            if auto_refresh_after_run:
+                st.cache_data.clear()
+                st.rerun()
+
+    with refresh_col:
+        if st.button("Reload Data"):
+            st.cache_data.clear()
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if not df.empty:
+        st.subheader("Volume by Status")
+        status_counts = df["status"].fillna("Unknown").value_counts().reset_index()
+        status_counts.columns = ["status", "count"]
+        st.bar_chart(status_counts.set_index("status"))
+
+        st.subheader("Top Vendors by Spend")
+        vendor_totals = (
+            df.groupby("vendor", as_index=False)["total"]
+            .sum()
+            .sort_values("total", ascending=False)
+            .head(top_vendor_limit)
+            .set_index("vendor")
+        )
+        st.bar_chart(vendor_totals)
+    else:
+        st.warning("No report data detected. Run a processing batch to populate metrics.")
+
+with tab_explorer:
+    st.subheader("Interactive Report Explorer")
+    if df.empty:
+        st.info("Report not available yet.")
+    else:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            status_filter = st.multiselect(
+                "Filter by status",
+                options=sorted(df["status"].astype(str).unique().tolist()),
+                default=[],
+            )
+        with c2:
+            vendor_filter = st.text_input("Vendor contains")
+        with c3:
+            min_total = st.number_input("Min total", min_value=0.0, value=0.0, step=1.0)
+
+        extra_a, extra_b = st.columns(2)
+        with extra_a:
+            date_from = st.date_input("Date from", value=None)
+        with extra_b:
+            date_to = st.date_input("Date to", value=None)
+
+        filtered = df.copy()
+        if status_filter:
+            filtered = filtered[filtered["status"].isin(status_filter)]
+        if vendor_filter.strip():
+            filtered = filtered[filtered["vendor"].astype(str).str.contains(vendor_filter.strip(), case=False, na=False)]
+        filtered = filtered[filtered["total"] >= min_total]
+
+        if date_from is not None or date_to is not None:
+            date_col = pd.to_datetime(filtered["date"], errors="coerce", dayfirst=True)
+            if date_from is not None:
+                filtered = filtered[date_col >= pd.to_datetime(date_from)]
+                date_col = pd.to_datetime(filtered["date"], errors="coerce", dayfirst=True)
+            if date_to is not None:
+                filtered = filtered[date_col <= pd.to_datetime(date_to)]
+
+        st.caption(f"Filtered rows: {len(filtered)}")
+        st.dataframe(
+            filtered.style.map(highlight_status, subset=["status"]),
+            use_container_width=True,
+            height=430,
+        )
+
+        d1, d2 = st.columns(2)
+        with d1:
+            st.download_button(
+                label="Export filtered CSV",
+                data=filtered.to_csv(index=False),
+                file_name="filtered_audit_report.csv",
+                mime="text/csv",
+            )
+        with d2:
+            st.download_button(
+                label="Export filtered JSON",
+                data=filtered.to_json(orient="records", indent=2),
+                file_name="filtered_audit_report.json",
+                mime="application/json",
+            )
+
+with tab_insights:
+    st.subheader("Audit Insights")
+    if df.empty:
+        st.info("Insights become available after at least one batch run.")
+    else:
+        timeline = (
+            df.assign(date_parsed=pd.to_datetime(df["date"], errors="coerce", dayfirst=True))
+            .dropna(subset=["date_parsed"])
+            .groupby("date_parsed", as_index=False)["total"]
+            .sum()
+            .sort_values("date_parsed")
+        )
+
+        if not timeline.empty:
+            timeline["rolling_total"] = timeline["total"].rolling(rolling_window, min_periods=1).mean()
+
+        c_left, c_mid, c_right = st.columns([2, 1, 1])
+        with c_left:
+            if not timeline.empty:
+                st.line_chart(timeline.set_index("date_parsed")["total"])
+            else:
+                st.info("No reliable date values available for trend charting.")
+
+        with c_mid:
+            if not timeline.empty:
+                st.area_chart(timeline.set_index("date_parsed")["rolling_total"])
+            else:
+                st.info("No rolling trend available.")
+
+        with c_right:
+            mean_total = df["total"].mean()
+            std_total = df["total"].std() if len(df) > 1 else 0.0
+            threshold = mean_total + (2 * std_total)
+            anomalies = df[df["total"] > threshold] if std_total > 0 else df.head(0)
+            st.metric("Average receipt", f"RM {mean_total:,.2f}")
+            st.metric("Anomaly threshold", f"RM {threshold:,.2f}")
+            st.metric("Anomalies", f"{len(anomalies)}")
+
+        f1, f2 = st.columns(2)
+        with f1:
+            st.metric("Vendor concentration", f"{stats['vendor_concentration']:.2f}")
+        with f2:
+            st.metric("Std deviation", f"RM {stats['std']:,.2f}")
+
+        if len(anomalies) > 0:
+            st.markdown("Potential high-value outliers")
+            st.dataframe(anomalies[["filename", "vendor", "date", "total", "status"]], use_container_width=True)
+
+with tab_ops:
+    st.subheader("Operations Center")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown("Directory health checks")
+        checks = {
+            "Dataset path": data_path,
+            "Report file": report_path,
+            "Log file": DEFAULT_LOG_PATH,
+            "Organized folder": DEFAULT_ORGANIZED_PATH,
+        }
+        for name, path in checks.items():
+            exists = os.path.exists(path)
+            state = "OK" if exists else "Missing"
+            st.write(f"{name}: {state} -> {path}")
+
+    with col_b:
+        st.markdown("Librarian tools")
+        if st.button("Re-run file organizer"):
+            if df.empty:
+                st.warning("No report rows found to organize.")
+            else:
+                agent = ReceiptAgent(max_workers=effective_workers)
+                agent.organize_files(df.to_dict(orient="records"))
+                st.success("File organization completed from current report.")
+
+        if st.button("Quick optimize settings"):
+            st.info("Recommended: Turbo mode + organize off + fast UI mode enabled for maximum speed.")
+
+    st.markdown("Recent agent logs")
+    if os.path.exists(DEFAULT_LOG_PATH):
+        with open(DEFAULT_LOG_PATH, "r", encoding="utf-8", errors="ignore") as log_f:
+            lines = log_f.readlines()[-80:]
+            st.code("".join(lines), language="text")
+    else:
+        st.info("Log file not found yet.")

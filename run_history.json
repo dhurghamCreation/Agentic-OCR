@@ -1,0 +1,38 @@
+[
+  {
+    "timestamp": "2026-05-06 23:00:17",
+    "documents": 0,
+    "duration": 103.56124448776245,
+    "mode": "Balanced",
+    "workers": 6,
+    "engine": "Docling (default)",
+    "incremental": true
+  },
+  {
+    "timestamp": "2026-05-06 23:06:17",
+    "documents": 0,
+    "duration": 97.12042593955994,
+    "mode": "Balanced",
+    "workers": 6,
+    "engine": "Docling (default)",
+    "incremental": true
+  },
+  {
+    "timestamp": "2026-05-06 23:23:21",
+    "documents": 0,
+    "duration": 87.36152696609497,
+    "mode": "Balanced",
+    "workers": 6,
+    "engine": "Docling (default)",
+    "incremental": true
+  },
+  {
+    "timestamp": "2026-05-06 23:37:51",
+    "documents": 0,
+    "duration": 90.09880685806274,
+    "mode": "Balanced",
+    "workers": 6,
+    "engine": "Docling (default)",
+    "incremental": true
+  }
+]
