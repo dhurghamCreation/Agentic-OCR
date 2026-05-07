@@ -1,5 +1,8 @@
-flask
+streamlit
 openai
 pandas
 requests
 python-dotenv
+streamlit-lottie
+streamlit-extras
+Pillow

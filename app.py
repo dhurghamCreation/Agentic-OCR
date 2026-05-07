@@ -1,19 +1,4 @@
-from flask import Flask, jsonify
-import sys
-import os
 
-# This creates the "app" variable Vercel is looking for
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Agentic OCR API is Running!"
-
-@app.route('/run')
-def run_ocr():
-    # This is where you would call your main OCR logic
-    # Example: result = your_main_function()
-    return jsonify({"status": "ready", "message": "OCR Engine is online"})
 import os
 import json
 import time
@@ -32,12 +17,11 @@ import html
 from agent_engine import ReceiptAgent
 
 APP_VERSION = "3.2.9"
-DEFAULT_DATA_PATH = "D:/Agentic_OCR/data/sroie"
-DEFAULT_REPORT_PATH = "D:/Agentic_OCR/master_report.csv"
-DEFAULT_LOG_PATH = "D:/Agentic_OCR/agent_trace.log"
-DEFAULT_ORGANIZED_PATH = "D:/Agentic_OCR/organized_receipts"
-HISTORY_FILE = "D:/Agentic_OCR/run_history.json"
-
+DEFAULT_DATA_PATH = "data/sroie"
+DEFAULT_REPORT_PATH = "master_report.csv"
+DEFAULT_LOG_PATH = "agent_trace.log"
+DEFAULT_ORGANIZED_PATH = "organized_receipts"
+HISTORY_FILE = "run_history.json"
 st.set_page_config(
     page_title="Neural OCR | Premium Platform",
     page_icon="⚡",
